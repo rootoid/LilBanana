@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lil Banana: Wave Defense</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1025;
+            font-family: 'Press Start 2P', cursive;
+            touch-action: none;
+            image-rendering: pixelated;
+        }
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+        .ui-overlay {
+            text-shadow: 4px 4px 0 #000;
+            pointer-events: none;
+        }
+        .interactive {
+            pointer-events: auto;
+        }
+        .control-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 4px solid rgba(255, 215, 0, 0.5);
+            border-radius: 10%;
+            position: absolute;
+            bottom: 40px;
+            touch-action: none;
+            display: none;
+            z-index: 20;
+            box-shadow: 4px 4px 0px #000;
+        }
+        .control-btn:active {
+            background: rgba(255, 215, 0, 0.3);
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0px #000;
+        }
+        #joystick-zone {
+            left: 40px;
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+        }
+        #joystick-knob {
+            width: 40px;
+            height: 40px;
+            background: #ffd700;
+            border: 4px solid #000;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #fire-btn {
+            right: 40px;
+            width: 90px;
+            height: 90px;
+            background: rgba(255, 0, 100, 0.2);
+            border-color: #ff006e;
+        }
+        #hyperspace-btn {
+            right: 150px;
+            bottom: 40px;
+            width: 60px;
+            height: 60px;
+            border-color: #3a86ff;
+            background: rgba(58, 134, 255, 0.2);
+        }
+        
+        .scanlines {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.2) 50%,
+                rgba(0,0,0,0.2)
+            );
+            background-size: 100% 4px;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 10;
+            opacity: 0.6;
+        }
+
+        #level-indicator {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 48px;
+            color: #ffd700;
+            text-shadow: 4px 4px 0 #000;
+            opacity: 0;
+            transition: opacity 0.5s;
+            text-align: center;
+        }
+        
+        #boss-hud {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            display: none; /* Hidden unless boss is active */
+        }
+        #boss-name {
+            text-align: center;
+            color: #ef4444;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        #boss-health-bar {
+            width: 100%;
+            height: 10px;
+            background: #333;
+            border: 2px solid #fff;
+        }
+        #boss-health-fill {
+            width: 100%;
+            height: 100%;
+            background: #ef4444;
+            transition: width 0.2s;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+    <div class="scanlines"></div>
+    
+    <div id="level-indicator">WAVE 1</div>
+    
+    <div id="boss-hud">
+        <div id="boss-name">BOSS NAME</div>
+        <div id="boss-health-bar"><div id="boss-health-fill"></div></div>
+    </div>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="absolute inset-0 ui-overlay flex flex-col justify-between p-6 z-30">
+        
+        <!-- Top Bar -->
+        <div class="flex justify-between w-full text-white text-sm md:text-base items-start">
+            <div>
+                <div id="scoreEl" class="text-yellow-400">SCORE: 0</div>
+                <div id="waveEl" class="text-cyan-400 mt-2">WAVE: 1/10</div>
+                <div id="comboEl" class="text-purple-300 text-xs mt-2 opacity-0 transition-opacity duration-200">COMBO x1</div>
+            </div>
+            <div id="highScoreEl" class="text-gray-400">HIGH: 0</div>
+            <div class="text-right">
+                 <div id="livesEl" class="text-red-500 tracking-widest">❤❤❤</div>
+                 <div id="powerupText" class="text-xs mt-2 text-green-400 h-4 blink"></div>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="startScreen" class="absolute inset-0 flex flex-col items-center justify-center interactive bg-black/80 backdrop-blur-sm z-50">
+            <h1 class="text-4xl md:text-6xl text-yellow-400 mb-4 text-center leading-tight tracking-tighter" style="text-shadow: 4px 4px 0 #b45309;">LIL<br>BANANA</h1>
+            <h2 class="text-xl text-cyan-400 mb-6 tracking-widest">WAVE DEFENSE</h2>
+            <p class="text-gray-300 text-xs md:text-sm mb-8 text-center max-w-md leading-6 font-mono">
+                SURVIVE 10 WAVES<br>
+                BOSSES AT WAVE 5 & 10<br><br>
+                ARROWS/WASD: Move • SPACE: Shoot • SHIFT: Warp
+            </p>
+            <button id="startBtn" class="px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-bold text-xl border-b-4 border-r-4 border-yellow-700 active:border-0 active:translate-y-1 transition-all">
+                START CAMPAIGN
+            </button>
+        </div>
+
+        <!-- Game Over / Win Screen -->
+        <div id="gameOverScreen" class="hidden absolute inset-0 flex flex-col items-center justify-center interactive bg-black/90 z-50">
+            <h1 id="endTitle" class="text-5xl mb-4" style="text-shadow: 4px 4px 0 #000;">GAME OVER</h1>
+            <p id="finalScore" class="text-white mb-8 text-xl">SCORE: 0</p>
+            <p id="finalWave" class="text-cyan-400 mb-8 text-sm">REACHED WAVE 1</p>
+            <button id="restartBtn" class="px-8 py-4 bg-white hover:bg-gray-200 text-black font-bold text-xl border-b-4 border-r-4 border-gray-500 active:border-0 active:translate-y-1 transition-all">
+                RETRY
+            </button>
+        </div>
+    </div>
+
+    <!-- Mobile Controls -->
+    <div id="joystick-zone" class="control-btn" style="border-radius: 50%;">
+        <div id="joystick-knob"></div>
+    </div>
+    <div id="fire-btn" class="control-btn flex items-center justify-center">
+        <span class="text-white text-[10px]">FIRE</span>
+    </div>
+    <div id="hyperspace-btn" class="control-btn flex items-center justify-center">
+        <span class="text-white text-[8px]">WARP</span>
+    </div>
+
+    <script>
+        // --- Setup & Constants ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+
+        // Elements
+        const scoreEl = document.getElementById('scoreEl');
+        const waveEl = document.getElementById('waveEl');
+        const highScoreEl = document.getElementById('highScoreEl');
+        const livesEl = document.getElementById('livesEl');
+        const comboEl = document.getElementById('comboEl');
+        const powerupText = document.getElementById('powerupText');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const endTitle = document.getElementById('endTitle');
+        const finalScoreEl = document.getElementById('finalScore');
+        const finalWaveEl = document.getElementById('finalWave');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const levelIndicator = document.getElementById('level-indicator');
+        const bossHud = document.getElementById('boss-hud');
+        const bossNameEl = document.getElementById('boss-name');
+        const bossHealthFill = document.getElementById('boss-health-fill');
+        
+        const joystickZone = document.getElementById('joystick-zone');
+        const joystickKnob = document.getElementById('joystick-knob');
+        const fireBtn = document.getElementById('fire-btn');
+        const hyperspaceBtn = document.getElementById('hyperspace-btn');
+
+        let width, height;
+        const FPS = 60;
+        const FRICTION = 0.7; 
+        const SHIP_SIZE = 24; 
+        const SHIP_THRUST = 5; 
+        const TURN_SPEED = 360; 
+        const LASER_SPD = 600; // Faster lasers since they don't wrap
+        const LASER_MAX = 10; 
+        const ROIDS_NUM = 2; // Base asteroids
+        const ROIDS_SIZE = 80; 
+        const ROIDS_SPD = 50; 
+        const MAX_WAVE = 10;
+
+        // --- Game State ---
+        let gameState = 'MENU'; 
+        let score = 0;
+        let highScore = localStorage.getItem('asteroid_highscore') || 0;
+        highScoreEl.innerText = `HIGH: ${highScore}`;
+        let wave = 1;
+        let lives = 3;
+        
+        let shakeDuration = 0;
+        let combo = 1;
+        let comboTimer = 0;
+
+        const input = { left: false, right: false, up: false, shoot: false, hyperspace: false };
+        let isTouchDevice = false;
+        let joystickData = { active: false, x: 0, y: 0, originX: 0, originY: 0, angle: 0, force: 0 };
+
+        // --- Assets ---
+        const Assets = {
+            ship: null, bossMini: null, bossFinal: null,
+            asteroidL: null, asteroidM: null, asteroidS: null,
+            bg: null, laserPlayer: null, laserEnemy: null,
+            puShield: null, puSpread: null, puRapid: null
+        };
+
+        function createPixelSprite(map, colors, scale = 2) {
+            const h = map.length;
+            const w = map[0].length;
+            const c = document.createElement('canvas');
+            c.width = w * scale;
+            c.height = h * scale;
+            const cx = c.getContext('2d');
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const char = map[y][x];
+                    if (char !== ' ' && colors[char]) {
+                        cx.fillStyle = colors[char];
+                        cx.fillRect(x * scale, y * scale, scale, scale);
+                    }
+                }
+            }
+            return c;
+        }
+
+        function generateAssets() {
+            const shipMap = ["   Y   ","  YWY  ","  YWY  "," YYYYY "," YYYYY ","YY Y YY","O  F  O"];
+            Assets.ship = createPixelSprite(shipMap, { 'Y': '#ffd700', 'W': '#e0f7fa', 'O': '#d97706', 'F': '#ef4444' }, 4);
+
+            const bossMiniMap = [
+                "  R R  ",
+                " RRRRR ",
+                "RGGGGGR",
+                " RRRRR ",
+                "  R R  "
+            ];
+            Assets.bossMini = createPixelSprite(bossMiniMap, {'R': '#ef4444', 'G': '#10b981'}, 8);
+
+            const bossFinalMap = [
+                "X X X X",
+                " XXXXX ",
+                "XXRRRXX",
+                "XXXXXXX",
+                " X X X "
+            ];
+            Assets.bossFinal = createPixelSprite(bossFinalMap, {'X': '#5b21b6', 'R': '#ff0000'}, 12);
+
+            const rockColors = { 'B': '#78350f', 'D': '#451a03', 'L': '#92400e' };
+            const genRock = (size) => {
+                const dim = size === 'L' ? 16 : (size === 'M' ? 10 : 6);
+                const map = [];
+                for(let i=0; i<dim; i++) {
+                    let row = "";
+                    for(let j=0; j<dim; j++) {
+                        let dist = Math.sqrt(Math.pow(i-dim/2,2) + Math.pow(j-dim/2,2));
+                        if(dist < dim/2 - 1) row += Math.random()>0.8 ? 'D' : (Math.random()>0.6?'L':'B');
+                        else row += ' ';
+                    }
+                    map.push(row);
+                }
+                return createPixelSprite(map, rockColors, 4);
+            };
+            Assets.asteroidL = genRock('L');
+            Assets.asteroidM = genRock('M');
+            Assets.asteroidS = genRock('S');
+
+            Assets.laserPlayer = createPixelSprite(["YY"], {'Y': '#ffff00'}, 4);
+            Assets.laserEnemy = createPixelSprite(["RR"], {'R': '#ff0000'}, 4);
+
+            const puMap = ["XXXXX","X...X","X.C.X","X...X","XXXXX"];
+            Assets.puShield = createPixelSprite(puMap.map(r=>r.replace('C', 'S')), {'X': '#3b82f6', '.': '#1d4ed8', 'S': '#fff'}, 4);
+            Assets.puSpread = createPixelSprite(puMap.map(r=>r.replace('C', 'W')), {'X': '#eab308', '.': '#a16207', 'W': '#fff'}, 4);
+            Assets.puRapid = createPixelSprite(puMap.map(r=>r.replace('C', 'R')), {'X': '#22c55e', '.': '#15803d', 'R': '#fff'}, 4);
+            
+            Assets.bg = document.createElement('canvas');
+            Assets.bg.width = 500; Assets.bg.height = 500;
+            const bgCtx = Assets.bg.getContext('2d');
+            bgCtx.fillStyle = '#1a1025'; bgCtx.fillRect(0,0,500,500);
+            for(let i=0; i<80; i++) {
+                bgCtx.fillStyle = Math.random() > 0.5 ? '#fbbf24' : '#ffffff';
+                let s = Math.random() > 0.9 ? 2 : 1;
+                bgCtx.fillRect(Math.random()*500, Math.random()*500, s, s);
+            }
+        }
+        generateAssets();
+
+        // --- Resize ---
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            ctx.imageSmoothingEnabled = false;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function distBetweenPoints(x1, y1, x2, y2) {
+            return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+        }
+
+        // --- Classes ---
+        class Ship {
+            constructor() {
+                this.x = width / 2;
+                this.y = height / 2;
+                this.a = 90 / 180 * Math.PI; 
+                this.r = SHIP_SIZE; 
+                this.canShoot = true;
+                this.lasers = [];
+                this.thrusting = false;
+                this.thrust = { x: 0, y: 0 };
+                this.rot = 0; 
+                this.dead = false;
+                this.explodeTime = 0;
+                this.safeTime = 3;
+                this.shield = false;
+                this.spreadShotTimer = 0;
+                this.rapidFireTimer = 0;
+            }
+            update(dt) {
+                if (this.dead) {
+                    this.explodeTime -= dt;
+                    if (this.explodeTime <= 0) lives === 0 ? gameOver() : this.reset();
+                    return;
+                }
+                if (this.safeTime > 0) this.safeTime -= dt;
+                if (this.spreadShotTimer > 0) this.spreadShotTimer -= dt;
+                if (this.rapidFireTimer > 0) this.rapidFireTimer -= dt;
+                if (this.spreadShotTimer <= 0 && this.rapidFireTimer <= 0) powerupText.innerText = "";
+
+                if (input.left) this.rot = TURN_SPEED / 180 * Math.PI * dt;
+                else if (input.right) this.rot = -TURN_SPEED / 180 * Math.PI * dt;
+                else this.rot = 0;
+                if (joystickData.active) this.a = -joystickData.angle; else this.a += this.rot;
+
+                if (input.up || (joystickData.active && joystickData.force > 0.2)) {
+                    this.thrusting = true;
+                    this.thrust.x += SHIP_THRUST * Math.cos(this.a) * dt;
+                    this.thrust.y -= SHIP_THRUST * Math.sin(this.a) * dt;
+                    if (Math.random() < 0.5) particles.push(new Particle(this.x - this.r*Math.cos(this.a), this.y + this.r*Math.sin(this.a), Math.cos(this.a+Math.PI)*100, -Math.sin(this.a+Math.PI)*100, 0.3, '#fbbf24'));
+                } else {
+                    this.thrusting = false;
+                    this.thrust.x -= FRICTION * this.thrust.x * dt;
+                    this.thrust.y -= FRICTION * this.thrust.y * dt;
+                }
+
+                if (input.hyperspace) { this.hyperspaceJump(); input.hyperspace = false; }
+
+                this.x += this.thrust.x;
+                this.y += this.thrust.y;
+                if (this.x < 0 - this.r) this.x = width + this.r;
+                else if (this.x > width + this.r) this.x = 0 - this.r;
+                if (this.y < 0 - this.r) this.y = height + this.r;
+                else if (this.y > height + this.r) this.y = 0 - this.r;
+
+                let rate = this.rapidFireTimer > 0 ? 0.1 : 0.25;
+                if (input.shoot && this.canShoot) {
+                    this.shoot();
+                    this.canShoot = false;
+                    setTimeout(() => { this.canShoot = true; }, rate * 1000);
+                }
+                if(!input.shoot) this.canShoot = true;
+
+                for (let i = this.lasers.length - 1; i >= 0; i--) {
+                    this.lasers[i].update(dt);
+                    if (this.lasers[i].dead) this.lasers.splice(i, 1);
+                }
+            }
+            hyperspaceJump() {
+                for(let i=0; i<20; i++) particles.push(new Particle(this.x, this.y, (Math.random()-0.5)*400, (Math.random()-0.5)*400, 0.5, '#ffffff'));
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.thrust.x = 0; this.thrust.y = 0;
+            }
+            shoot() {
+                const createLaser = (angleOffset) => {
+                     this.lasers.push(new Laser(this.x + 4/3*this.r*Math.cos(this.a), this.y - 4/3*this.r*Math.sin(this.a), this.a + angleOffset));
+                };
+                createLaser(0);
+                if (this.spreadShotTimer > 0) { createLaser(0.15); createLaser(-0.15); }
+            }
+            draw() {
+                if (this.dead) return;
+                for (let l of this.lasers) l.draw();
+                if (this.shield) {
+                    ctx.strokeStyle = `rgba(59, 130, 246, ${0.5 + Math.sin(Date.now()/100)*0.2})`;
+                    ctx.lineWidth = 4; ctx.setLineDash([5, 5]);
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.r + 5, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+                }
+                if (this.safeTime > 0 && Math.floor(this.safeTime * 10) % 2 === 0) return;
+                ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(-this.a + Math.PI / 2);
+                if(Assets.ship) ctx.drawImage(Assets.ship, -Assets.ship.width/2, -Assets.ship.height/2);
+                ctx.restore();
+            }
+            hit() {
+                if (this.safeTime > 0) return;
+                if (this.shield) { this.shield = false; this.safeTime = 2; return; }
+                this.explode();
+            }
+            explode() {
+                this.dead = true; this.explodeTime = 2; lives--; triggerShake(20); updateUI();
+                for(let i=0; i<30; i++) particles.push(new Particle(this.x, this.y, (Math.random()-0.5)*300, (Math.random()-0.5)*300, Math.random()*1+0.5, Math.random()>0.5?'#fbbf24':'#ef4444'));
+            }
+            reset() {
+                this.dead = false; this.x = width / 2; this.y = height / 2; this.a = 90 / 180 * Math.PI;
+                this.thrust.x = 0; this.thrust.y = 0; this.safeTime = 3; this.shield = false;
+                this.spreadShotTimer = 0; this.rapidFireTimer = 0; this.lasers = [];
+                for(let i=asteroids.length-1; i>=0; i--) { if(distBetweenPoints(this.x, this.y, asteroids[i].x, asteroids[i].y) < 200) asteroids.splice(i, 1); }
+            }
+        }
+
+        class Laser {
+            constructor(x, y, a, isUfo = false) {
+                this.x = x; this.y = y; this.isUfo = isUfo;
+                let spd = isUfo ? LASER_SPD * 0.6 : LASER_SPD;
+                this.xv = spd * Math.cos(a); this.yv = -spd * Math.sin(a);
+                this.a = a; this.dead = false;
+            }
+            update(dt) {
+                this.x += this.xv * dt; this.y += this.yv * dt;
+                // Delete if off screen (No Wrap)
+                if (this.x < -10 || this.x > width + 10 || this.y < -10 || this.y > height + 10) {
+                    this.dead = true;
+                }
+            }
+            draw() {
+                ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(-this.a);
+                let img = this.isUfo ? Assets.laserEnemy : Assets.laserPlayer;
+                if(img) ctx.drawImage(img, -img.width/2, -img.height/2);
+                ctx.restore();
+            }
+        }
+
+        class Asteroid {
+            constructor(x, y, r) {
+                this.x = x; this.y = y;
+                this.r = r || Math.ceil(Math.random() * ROIDS_SIZE / 2 + ROIDS_SIZE / 2);
+                // Speed increases with wave
+                let speedMult = 1 + (wave * 0.1);
+                this.xv = Math.random() * ROIDS_SPD * speedMult * (Math.random() < 0.5 ? 1 : -1) / FPS;
+                this.yv = Math.random() * ROIDS_SPD * speedMult * (Math.random() < 0.5 ? 1 : -1) / FPS;
+                this.a = Math.random() * Math.PI * 2;
+                this.rotSpeed = (Math.random() - 0.5) * 2;
+                if(this.r >= ROIDS_SIZE/2) this.img = Assets.asteroidL;
+                else if(this.r >= ROIDS_SIZE/4) this.img = Assets.asteroidM;
+                else this.img = Assets.asteroidS;
+            }
+            update(dt) {
+                this.x += this.xv * 60 * dt; this.y += this.yv * 60 * dt;
+                this.a += this.rotSpeed * dt;
+                if (this.x < 0 - this.r) this.x = width + this.r;
+                else if (this.x > width + this.r) this.x = 0 - this.r;
+                if (this.y < 0 - this.r) this.y = height + this.r;
+                else if (this.y > height + this.r) this.y = 0 - this.r;
+            }
+            draw() {
+                ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.a);
+                if(this.img) ctx.drawImage(this.img, -this.img.width/2, -this.img.height/2);
+                ctx.restore();
+            }
+        }
+
+        class Boss {
+            constructor(isFinal) {
+                this.isFinal = isFinal;
+                this.x = width / 2;
+                this.y = -100;
+                this.r = isFinal ? 60 : 40;
+                this.hp = isFinal ? 5000 : 1000;
+                this.maxHp = this.hp;
+                this.name = isFinal ? "THE WARLORD" : "LIEUTENANT";
+                this.moveTimer = 0;
+                this.shootTimer = 0;
+                this.state = 'ENTERING'; // ENTERING, FIGHTING
+                this.lasers = [];
+                this.targetX = width/2;
+                this.img = isFinal ? Assets.bossFinal : Assets.bossMini;
+                
+                // UI Setup
+                bossHud.style.display = 'block';
+                bossNameEl.innerText = this.name;
+                bossNameEl.style.color = isFinal ? '#a855f7' : '#ef4444';
+                bossHealthFill.style.backgroundColor = isFinal ? '#a855f7' : '#ef4444';
+                this.updateHealthBar();
+            }
+
+            updateHealthBar() {
+                const pct = Math.max(0, (this.hp / this.maxHp) * 100);
+                bossHealthFill.style.width = `${pct}%`;
+            }
+
+            update(dt, player) {
+                // Move Lasers
+                for(let i=this.lasers.length-1; i>=0; i--) {
+                    this.lasers[i].update(dt);
+                    if(this.lasers[i].dead) this.lasers.splice(i, 1);
+                }
+
+                if (this.state === 'ENTERING') {
+                    this.y += 50 * dt;
+                    if (this.y > 100) this.state = 'FIGHTING';
+                    return;
+                }
+
+                // Movement Pattern
+                this.moveTimer += dt;
+                // Hover side to side
+                this.targetX = (width/2) + Math.sin(this.moveTimer * (this.isFinal ? 0.5 : 1)) * (width/3);
+                this.x += (this.targetX - this.x) * 2 * dt;
+                
+                // Shoot Pattern
+                this.shootTimer -= dt;
+                if (this.shootTimer <= 0 && !player.dead) {
+                    if (this.isFinal) {
+                        // Final Boss Patterns
+                        let pattern = Math.floor(this.moveTimer % 3);
+                        if (pattern === 0) {
+                             // Spread Shot
+                            for(let i=-2; i<=2; i++) {
+                                this.lasers.push(new Laser(this.x, this.y + 40, Math.PI/2 + (i*0.2), true));
+                            }
+                            this.shootTimer = 1.0;
+                        } else if (pattern === 1) {
+                            // Machine gun
+                            this.lasers.push(new Laser(this.x, this.y + 40, Math.PI/2 + (Math.random()-0.5)*0.2, true));
+                            this.shootTimer = 0.1;
+                        } else {
+                            // Aimed burst
+                             let angle = Math.atan2(-(player.y - this.y), player.x - this.x);
+                             this.lasers.push(new Laser(this.x, this.y + 40, angle, true));
+                             this.shootTimer = 0.4;
+                        }
+                    } else {
+                        // Mini Boss: Simple aimed shot
+                        let angle = Math.atan2(-(player.y - this.y), player.x - this.x);
+                        this.lasers.push(new Laser(this.x, this.y + 20, angle, true));
+                        this.lasers.push(new Laser(this.x, this.y + 20, angle + 0.1, true));
+                        this.lasers.push(new Laser(this.x, this.y + 20, angle - 0.1, true));
+                        this.shootTimer = 1.5;
+                    }
+                }
+            }
+
+            draw() {
+                for(let l of this.lasers) l.draw();
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                // Bobbing effect
+                ctx.translate(0, Math.sin(Date.now()/200)*5);
+                if(this.img) ctx.drawImage(this.img, -this.img.width/2, -this.img.height/2);
+                ctx.restore();
+            }
+
+            hit(damage) {
+                this.hp -= damage;
+                this.updateHealthBar();
+                // Flash effect or particles
+                for(let i=0; i<3; i++) particles.push(new Particle(this.x + (Math.random()-0.5)*50, this.y + (Math.random()-0.5)*50, (Math.random()-0.5)*100, (Math.random()-0.5)*100, 0.3, '#fff'));
+                
+                if (this.hp <= 0) {
+                    this.die();
+                    return true; // Dead
+                }
+                return false;
+            }
+
+            die() {
+                 bossHud.style.display = 'none';
+                 triggerShake(30);
+                 for(let i=0; i<100; i++) {
+                    particles.push(new Particle(this.x, this.y, (Math.random()-0.5)*500, (Math.random()-0.5)*500, Math.random() * 2, '#a855f7'));
+                }
+            }
+        }
+
+        class PowerUp {
+            constructor(x, y, type) {
+                this.x = x; this.y = y; this.type = type; this.r = 15; this.timer = 10; this.pulse = 0;
+                if (type === 'SHIELD') this.img = Assets.puShield;
+                else if (type === 'SPREAD') this.img = Assets.puSpread;
+                else this.img = Assets.puRapid;
+            }
+            update(dt) { this.timer -= dt; this.pulse += dt * 5; }
+            draw() {
+                ctx.save(); ctx.translate(this.x, this.y);
+                let scale = 1 + Math.sin(this.pulse) * 0.1; ctx.scale(scale, scale);
+                if(this.img) ctx.drawImage(this.img, -this.img.width/2, -this.img.height/2);
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, xv, yv, life, color) {
+                this.x = x; this.y = y; this.xv = xv; this.yv = yv; this.life = life; this.maxLife = life; this.color = color; this.size = Math.random() * 3 + 2;
+            }
+            update(dt) { this.x += this.xv * dt; this.y += this.yv * dt; this.life -= dt; this.xv *= 0.95; this.yv *= 0.95; }
+            draw() {
+                ctx.globalAlpha = Math.max(0, this.life / this.maxLife); ctx.fillStyle = this.color;
+                ctx.fillRect(this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        // --- Global Variables ---
+        let ship, boss;
+        let asteroids = [], particles = [], powerups = [];
+        let lastTime = 0;
+        let levelTransitioning = false;
+
+        function createLevel() {
+            asteroids = [];
+            powerups = [];
+            particles = []; // Keep particles? Maybe clear for clean look
+            
+            // Show Level Text
+            levelIndicator.innerText = wave === 5 ? "BOSS: LIEUTENANT" : (wave === 10 ? "FINAL BOSS" : `WAVE ${wave}`);
+            levelIndicator.style.color = (wave === 5 || wave === 10) ? '#ef4444' : '#ffd700';
+            levelIndicator.style.opacity = 1;
+            setTimeout(() => levelIndicator.style.opacity = 0, 2000);
+
+            waveEl.innerText = `WAVE: ${wave}/${MAX_WAVE}`;
+
+            if (wave === 5) {
+                boss = new Boss(false);
+            } else if (wave === 10) {
+                boss = new Boss(true);
+            } else {
+                // Regular Wave
+                let count = ROIDS_NUM + wave;
+                for (let i = 0; i < count; i++) {
+                    let x, y;
+                    do {
+                        x = Math.floor(Math.random() * width);
+                        y = Math.floor(Math.random() * height);
+                    } while (distBetweenPoints(width / 2, height / 2, x, y) < 200);
+                    asteroids.push(new Asteroid(x, y));
+                }
+            }
+        }
+
+        function newGame() {
+            score = 0; lives = 3; wave = 1; combo = 1;
+            ship = new Ship(); boss = null;
+            createLevel();
+            updateUI();
+            gameState = 'PLAYING';
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            if (isTouchDevice) { joystickZone.style.display = 'block'; fireBtn.style.display = 'flex'; hyperspaceBtn.style.display = 'flex'; }
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function winGame() {
+            gameState = 'WIN';
+            endTitle.innerText = "VICTORY!";
+            endTitle.style.color = "#ffd700";
+            endTitle.style.textShadow = "0 0 20px gold";
+            finalScoreEl.innerText = `FINAL SCORE: ${score}`;
+            finalWaveEl.innerText = "GALAXY SAVED";
+            gameOverScreen.classList.remove('hidden');
+            joystickZone.style.display = 'none'; fireBtn.style.display = 'none'; hyperspaceBtn.style.display = 'none';
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            if (score > highScore) { highScore = score; localStorage.setItem('asteroid_highscore', highScore); }
+            endTitle.innerText = "GAME OVER";
+            endTitle.style.color = "red";
+            finalScoreEl.innerText = `SCORE: ${score}`;
+            finalWaveEl.innerText = `DIED ON WAVE ${wave}`;
+            gameOverScreen.classList.remove('hidden');
+            joystickZone.style.display = 'none'; fireBtn.style.display = 'none'; hyperspaceBtn.style.display = 'none';
+        }
+
+        function triggerShake(amount) { shakeDuration = amount; }
+
+        function updateUI() {
+            scoreEl.innerText = `SCORE: ${score}`;
+            highScoreEl.innerText = `HIGH: ${highScore}`;
+            livesEl.innerText = '❤'.repeat(lives);
+            let pText = [];
+            if(ship && ship.spreadShotTimer > 0) pText.push("WIDE");
+            if(ship && ship.rapidFireTimer > 0) pText.push("RAPID");
+            if(ship && ship.shield) pText.push("SHIELD");
+            powerupText.innerText = pText.join(" + ");
+        }
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'PLAYING') return;
+            let dt = (timestamp - lastTime) / 1000;
+            if (dt > 0.1) dt = 0.1;
+            lastTime = timestamp;
+
+            if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) { combo = 1; comboEl.style.opacity = 0; } }
+            let tx = 0, ty = 0;
+            if (shakeDuration > 0) { shakeDuration -= 1; tx = (Math.random() - 0.5) * 10; ty = (Math.random() - 0.5) * 10; }
+
+            // Draw BG
+            if (Assets.bg) {
+                const ptrn = ctx.createPattern(Assets.bg, 'repeat');
+                ctx.fillStyle = ptrn; ctx.fillRect(0, 0, width, height);
+            } else { ctx.fillStyle = '#1a1025'; ctx.fillRect(0, 0, width, height); }
+            
+            ctx.save(); ctx.translate(tx, ty);
+
+            ship.update(dt); ship.draw();
+
+            // Boss Logic
+            if (boss) {
+                boss.update(dt, ship);
+                boss.draw();
+                
+                // Player Lasers vs Boss
+                for (let j = ship.lasers.length - 1; j >= 0; j--) {
+                    let l = ship.lasers[j];
+                    // Simple box collision for boss for now or circle
+                    if (distBetweenPoints(l.x, l.y, boss.x, boss.y) < boss.r) {
+                        ship.lasers.splice(j, 1);
+                        let dead = boss.hit(10 + (combo * 2)); // Combo increases damage slightly
+                        score += 10;
+                        if (dead) {
+                            score += 5000;
+                            boss = null;
+                            // Level clear handled below
+                            if(wave === 10) winGame();
+                        }
+                        updateUI();
+                    }
+                }
+
+                // Boss Lasers vs Player
+                 for (let l of boss.lasers) {
+                    if (!ship.dead && distBetweenPoints(l.x, l.y, ship.x, ship.y) < ship.r) {
+                        ship.hit(); l.x = -9999; // Hide laser
+                    }
+                }
+                
+                // Boss Body vs Player
+                if(!ship.dead && distBetweenPoints(ship.x, ship.y, boss.x, boss.y) < ship.r + boss.r) {
+                    ship.hit();
+                }
+            }
+
+            // Asteroids Logic
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                let a = asteroids[i];
+                a.update(dt);
+                a.draw();
+                if (!ship.dead && distBetweenPoints(ship.x, ship.y, a.x, a.y) < ship.r + a.r) {
+                    ship.hit(); destroyAsteroid(i, false); break;
+                }
+            }
+            
+            // Powerups
+            for(let i=powerups.length-1; i>=0; i--) {
+                powerups[i].update(dt); powerups[i].draw();
+                if (!ship.dead && distBetweenPoints(ship.x, ship.y, powerups[i].x, powerups[i].y) < ship.r + powerups[i].r) {
+                    applyPowerup(powerups[i].type); powerups.splice(i, 1);
+                } else if (powerups[i].timer <= 0) powerups.splice(i, 1);
+            }
+
+            // Lasers vs Asteroids
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                let a = asteroids[i];
+                for (let j = ship.lasers.length - 1; j >= 0; j--) {
+                    let l = ship.lasers[j];
+                    if (distBetweenPoints(a.x, a.y, l.x, l.y) < a.r) {
+                        ship.lasers.splice(j, 1); destroyAsteroid(i, true); break;
+                    }
+                }
+            }
+
+            for(let i=particles.length-1; i>=0; i--) { particles[i].update(dt); particles[i].draw(); if(particles[i].life <= 0) particles.splice(i, 1); }
+
+            ctx.restore();
+
+            // Level Complete Check
+            if (asteroids.length === 0 && !boss && !ship.dead && gameState === 'PLAYING') {
+                if (!levelTransitioning) {
+                    levelTransitioning = true;
+                    setTimeout(() => {
+                        if (wave < MAX_WAVE) {
+                            wave++;
+                            ship.reset(); // Heal shield? maybe not, just position
+                            createLevel();
+                            levelTransitioning = false;
+                        } else {
+                            // Win logic handled in boss death
+                        }
+                    }, 2000);
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function destroyAsteroid(index, byPlayer) {
+            let x = asteroids[index].x; let y = asteroids[index].y; let r = asteroids[index].r;
+            if (r > Math.ceil(ROIDS_SIZE / 2)) {
+                asteroids.push(new Asteroid(x, y, Math.ceil(r / 2))); asteroids.push(new Asteroid(x, y, Math.ceil(r / 2)));
+                if(byPlayer) addScore(20);
+            } else if (r > Math.ceil(ROIDS_SIZE / 4)) {
+                asteroids.push(new Asteroid(x, y, Math.ceil(r / 2))); asteroids.push(new Asteroid(x, y, Math.ceil(r / 2)));
+                if(byPlayer) addScore(50);
+            } else { if(byPlayer) addScore(100); }
+            asteroids.splice(index, 1);
+            triggerShake(5);
+            for(let i=0; i<15; i++) particles.push(new Particle(x, y, (Math.random()-0.5)*200, (Math.random()-0.5)*200, Math.random()*0.5+0.2, '#78350f'));
+            if (byPlayer && Math.random() < 0.1) {
+                let types = ['SHIELD', 'SPREAD', 'RAPID']; powerups.push(new PowerUp(x, y, types[Math.floor(Math.random() * types.length)]));
+            }
+        }
+        
+        function addScore(amount) {
+            if (comboTimer > 0) { combo++; comboTimer = 2.0; } else { combo = 1; comboTimer = 2.0; }
+            score += amount * combo; updateUI();
+            if (combo > 1) { comboEl.innerText = `COMBO x${combo}`; comboEl.style.opacity = 1; }
+        }
+        
+        function applyPowerup(type) {
+            if (type === 'SHIELD') ship.shield = true;
+            if (type === 'SPREAD') ship.spreadShotTimer = 10;
+            if (type === 'RAPID') ship.rapidFireTimer = 10;
+            updateUI(); score += 100;
+        }
+
+        // --- Inputs ---
+        document.addEventListener('keydown', (e) => {
+            if (gameState !== 'PLAYING') return;
+            switch (e.code) {
+                case 'ArrowLeft': case 'KeyA': input.left = true; break;
+                case 'ArrowRight': case 'KeyD': input.right = true; break;
+                case 'ArrowUp': case 'KeyW': input.up = true; break;
+                case 'Space': input.shoot = true; break;
+                case 'ShiftLeft': case 'ShiftRight': input.hyperspace = true; break;
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            switch (e.code) {
+                case 'ArrowLeft': case 'KeyA': input.left = false; break;
+                case 'ArrowRight': case 'KeyD': input.right = false; break;
+                case 'ArrowUp': case 'KeyW': input.up = false; break;
+                case 'Space': input.shoot = false; break;
+                case 'ShiftLeft': case 'ShiftRight': input.hyperspace = false; break;
+            }
+        });
+
+        function initTouch() { isTouchDevice = true; }
+        window.addEventListener('touchstart', function onFirstTouch() { initTouch(); window.removeEventListener('touchstart', onFirstTouch, false); }, false);
+        
+        joystickZone.addEventListener('touchstart', (e) => { e.preventDefault(); joystickData.active = true; joystickData.originX = e.changedTouches[0].clientX; joystickData.originY = e.changedTouches[0].clientY; joystickKnob.style.transition = 'none'; });
+        joystickZone.addEventListener('touchmove', (e) => {
+            e.preventDefault(); if (!joystickData.active) return;
+            const dx = e.changedTouches[0].clientX - joystickData.originX;
+            const dy = e.changedTouches[0].clientY - joystickData.originY;
+            const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 35);
+            const ang = Math.atan2(dy, dx);
+            joystickData.angle = ang; joystickData.force = dist / 35;
+            joystickKnob.style.transform = `translate(calc(-50% + ${dist*Math.cos(ang)}px), calc(-50% + ${dist*Math.sin(ang)}px))`;
+        });
+        const endJoy = () => { joystickData.active = false; joystickData.force = 0; joystickKnob.style.transition = 'transform 0.1s'; joystickKnob.style.transform = `translate(-50%, -50%)`; };
+        joystickZone.addEventListener('touchend', endJoy); joystickZone.addEventListener('touchcancel', endJoy);
+
+        const handleBtn = (btn, key) => { btn.addEventListener('touchstart', (e)=>{e.preventDefault();input[key]=true;}); const end=()=>{input[key]=false;}; btn.addEventListener('touchend', end); btn.addEventListener('touchcancel', end); };
+        handleBtn(fireBtn, 'shoot'); handleBtn(hyperspaceBtn, 'hyperspace');
+
+        startBtn.addEventListener('click', newGame);
+        restartBtn.addEventListener('click', newGame);
+        ctx.fillStyle = '#1a1025'; ctx.fillRect(0,0, canvas.width, canvas.height);
+    </script>
+</body>
+</html>
